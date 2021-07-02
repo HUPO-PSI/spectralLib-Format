@@ -1,3 +1,5 @@
+import sys
+import traceback
 import click
 
 from mzlib.spectrum_library import SpectrumLibrary

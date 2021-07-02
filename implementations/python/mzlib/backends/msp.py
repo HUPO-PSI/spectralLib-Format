@@ -1,11 +1,17 @@
+from mzlib.attributes import Attributed
+from mzlib.spectrum import Spectrum
 import re
+import io
 import os
 import logging
 import warnings
 
+from typing import List, Tuple, Union, Iterable
+
 from pathlib import Path
 
 from mzlib.index import MemoryIndex
+from mzlib.analyte import FIRST_ANALYTE_KEY, FIRST_INTERPRETATION_KEY, ANALYTE_MIXTURE_TERM
 from mzlib import annotation
 
 from .base import _PlainTextSpectralLibraryBackendBase
@@ -109,7 +115,7 @@ annotation_pattern = re.compile(r"""^
 (?:\^(?P<charge>[+-]?\d+))?
 (?:(?P<isotope>[+-]\d*)i)?
 (?:@(?P<analyte_reference>[^/\s]+))?
-(?:/(?P<mass_error>[+-]?\d+(?:\.\d+))(?P<mass_error_unit>ppm)?)?
+(?:/(?P<mass_error>[+-]?\d+(?:\.\d+))(?P<mass_error_unit>ppm)?)?(?P<aggergations>.*)
 """, re.X)
 
 
@@ -149,11 +155,8 @@ class MSPAnnotationStringParser(annotation.AnnotationStringParser):
             if len(spectrum.analytes) == 0:
                 return None
             else:
-                analyte_reference = spectrum.analytes[0].id
-        analyte = None
-        for analyte in spectrum.analytes:
-            if analyte.id == analyte_reference:
-                break
+                analyte_reference = spectrum.analytes[FIRST_ANALYTE_KEY].id
+        analyte = spectrum.analytes.get(analyte_reference)
         if analyte is None:
             return None
         return analyte.get_attribute('MS:1000888|unmodified peptide sequence')
@@ -167,27 +170,27 @@ class MSPSpectralLibrary(_PlainTextSpectralLibraryBackendBase):
     format_name = "msp"
 
     @classmethod
-    def guess_from_header(cls, filename):
+    def guess_from_header(cls, filename: str) -> bool:
         with open(filename, 'r') as stream:
             first_line = stream.readline()
             if re.match("Name: ", first_line):
                 return True
         return False
 
-    def read_header(self):
+    def read_header(self) -> bool:
         with open(self.filename, 'r') as stream:
             match, offset = self._parse_header_from_stream(stream)
             return match
         return False
 
-    def _parse_header_from_stream(self, stream):
+    def _parse_header_from_stream(self, stream: io.IOBase) -> Tuple[bool, int]:
         first_line = stream.readline()
         if re.match("Name: ", first_line):
             return True, 0
         return False, 0
 
 
-    def create_index(self):
+    def create_index(self) -> int:
         """
         Populate the spectrum index
 
@@ -276,7 +279,7 @@ class MSPSpectralLibrary(_PlainTextSpectralLibraryBackendBase):
 
         return n_spectra
 
-    def _buffer_from_stream(self, infile):
+    def _buffer_from_stream(self, infile: io.BufferedIOBase) -> List:
         state = 'body'
         spectrum_buffer = []
 
@@ -299,7 +302,7 @@ class MSPSpectralLibrary(_PlainTextSpectralLibraryBackendBase):
                 spectrum_buffer.append(line)
         return spectrum_buffer
 
-    def _parse(self, buffer, spectrum_index=None):
+    def _parse(self, buffer: Iterable, spectrum_index: int=None) -> Spectrum:
 
         #### Start in the header section of the entry
         in_header = True
@@ -348,7 +351,7 @@ class MSPSpectralLibrary(_PlainTextSpectralLibraryBackendBase):
             #### Else in the peaks section. Parse the peaks.
             else:
                 #### Split into the expected three values
-                values = re.split(r'\s+', line)
+                values = re.split(r'\s+', line, maxsplit=2)
                 interpretations = ""
                 aggregation = ""
                 if len(values) == 1:
@@ -365,6 +368,18 @@ class MSPSpectralLibrary(_PlainTextSpectralLibraryBackendBase):
                     intensity = "1"
 
                 interpretations = interpretations.strip('"')
+                if interpretations.startswith("?"):
+                    parts = re.split(r"\s+", interpretations)
+                    if len(parts) > 1:
+                        # Some msp files have a concept for ?i, but this requires a definition
+                        interpretations = "?"
+                        aggregation = parts[1:]
+                else:
+                    if " " in interpretations:
+                        parts = re.split(r"\s+", interpretations)
+                        interpretations = parts[0]
+                        aggregation = parts[1:]
+
                 #### Add to the peak list
                 peak_list.append([float(mz), float(intensity), interpretations, aggregation])
 
@@ -382,7 +397,7 @@ class MSPSpectralLibrary(_PlainTextSpectralLibraryBackendBase):
             peak[2] = parsed_interpretation
         return spectrum
 
-    def _parse_comment(self, value, attributes):
+    def _parse_comment(self, value: str, attributes: Attributed):
         comment_items = re.split(" ", value)
 
         #### Any spaces within quotes are then de-split
@@ -409,11 +424,14 @@ class MSPSpectralLibrary(_PlainTextSpectralLibraryBackendBase):
             else:
                 attributes[item] = None
 
-    def _make_spectrum(self, peak_list, attributes):
+    def _make_spectrum(self, peak_list: List, attributes: Attributed):
         spectrum = self._new_spectrum()
-        analyte = self._new_analyte("1")
+        interpretation = self._new_interpretation(FIRST_INTERPRETATION_KEY)
+        analyte = self._new_analyte(FIRST_ANALYTE_KEY)
+        spectrum.add_analyte(analyte)
+        # interpretation.add_analyte(analyte)
         spectrum.peak_list = peak_list
-        spectrum.analytes.append(analyte)
+        # spectrum.interpretations.add_interpretation(interpretation)
 
         #### Add special terms that we want to start off with
         for term in leader_terms:
@@ -594,27 +612,36 @@ class MSPSpectralLibrary(_PlainTextSpectralLibraryBackendBase):
             #### Expand the Mz_diff attribute
             elif attribute == "Mz_diff":
                 if attributes[attribute] is not None:
-                    match = re.match(
-                        r"([\-\+e\d\.]+)\s*ppm", attributes[attribute], flags=re.IGNORECASE)
-                    if match is not None:
+                    value = attributes[attribute]
+                    if isinstance(value, float):
+                        # We must be dealing with a unit-less entry.
                         group_identifier = spectrum.get_next_group_identifier()
                         spectrum.add_attribute(
                             "MS:1001975|delta m/z", try_cast(match.group(1)), group_identifier)
                         spectrum.add_attribute(
-                            "UO:0000000|unit", "UO:0000169|parts per million", group_identifier)
+                            "UO:0000000|unit", "MS:1000040|m/z", group_identifier)
                     else:
                         match = re.match(
-                            r"([\-\+e\d\.]+)\s*", attributes[attribute])
+                            r"([\-\+e\d\.]+)\s*ppm", attributes[attribute], flags=re.IGNORECASE)
                         if match is not None:
                             group_identifier = spectrum.get_next_group_identifier()
                             spectrum.add_attribute(
                                 "MS:1001975|delta m/z", try_cast(match.group(1)), group_identifier)
                             spectrum.add_attribute(
-                                "UO:0000000|unit", "MS:1000040|m/z", group_identifier)
+                                "UO:0000000|unit", "UO:0000169|parts per million", group_identifier)
                         else:
-                            spectrum.add_attribute(
-                                "ERROR", f"Unable to parse {attributes[attribute]} in {attribute}")
-                            unknown_terms.append(attribute)
+                            match = re.match(
+                                r"([\-\+e\d\.]+)\s*", attributes[attribute])
+                            if match is not None:
+                                group_identifier = spectrum.get_next_group_identifier()
+                                spectrum.add_attribute(
+                                    "MS:1001975|delta m/z", try_cast(match.group(1)), group_identifier)
+                                spectrum.add_attribute(
+                                    "UO:0000000|unit", "MS:1000040|m/z", group_identifier)
+                            else:
+                                spectrum.add_attribute(
+                                    "ERROR", f"Unable to parse {attributes[attribute]} in {attribute}")
+                                unknown_terms.append(attribute)
                 else:
                     spectrum.add_attribute(
                         "ERROR", f"Attribute {attribute} must have a value")
@@ -730,9 +757,13 @@ class MSPSpectralLibrary(_PlainTextSpectralLibraryBackendBase):
                     "MS:1009900|other attribute name", try_cast(attribute), group_identifier)
                 spectrum.add_attribute("MS:1009902|other attribute value",
                                    try_cast(attributes[attribute]), group_identifier)
+        if analyte:
+            spectrum.add_analyte(analyte)
+            interpretation.add_analyte(analyte)
+            spectrum.add_interpretation(interpretation)
         return spectrum
 
-    def get_spectrum(self, spectrum_number=None, spectrum_name=None):
+    def get_spectrum(self, spectrum_number: int=None, spectrum_name: str=None) -> Spectrum:
         # keep the two branches separate for the possibility that this is not possible with all
         # index schemes.
         if spectrum_number is not None:

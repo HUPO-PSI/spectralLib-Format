@@ -1,0 +1,121 @@
+{
+  "attributes": [],
+  "format_version": "1.0",
+  "spectra": [
+    {
+      "analytes": {
+        "1": {
+          "attributes": [
+            {
+              "accession": "MS:1000888",
+              "name": "peptidoform",
+              "value": "DSDDVPM[Oxidation]VLVGNKCDLAAR"
+            }
+          ],
+          "id": "1"
+        },
+        "2": {
+          "attributes": [
+            {
+              "accession": "MS:1000888",
+              "name": "peptidoform",
+              "value": "VLVGNKCDLDSDDVPMVLR"
+            }
+          ],
+          "id": "2"
+        },
+        "3": {
+          "attributes": [
+            {
+              "accession": "MS:1000888",
+              "name": "peptidoform",
+              "value": "CDLDSDDSDDVPMVLSAR"
+            }
+          ],
+          "id": "3"
+        }
+      },
+      "attributes": [
+        {
+          "accession": "MS:1003061",
+          "name": "spectrum name",
+          "value": "Test"
+        },
+        {
+          "accession": "MS:1000744",
+          "name": "selected ion m/z",
+          "value": 880.8902
+        }
+      ],
+      "intensities": [],
+      "interpretations": {
+        "1": {
+          "attributes": [
+            {
+              "accession": "MS:1002357",
+              "name": "PSM-level probability",
+              "value": 0.974
+            },
+            {
+              "accession": "MS:XXXXXXX",
+              "name": "analyte mixture members",
+              "value": "1,2"
+            }
+          ],
+          "id": "1",
+          "members": {
+            "1": {
+              "attributes": [
+                {
+                  "accession": "MS:XXXXXXX",
+                  "name": "explained intensity fraction",
+                  "value": 0.287
+                }
+              ],
+              "id": "1"
+            },
+            "2": {
+              "attributes": [
+                {
+                  "accession": "MS:XXXXXXX",
+                  "name": "explained intensity fraction",
+                  "value": 0.423
+                }
+              ],
+              "id": "2"
+            }
+          }
+        },
+        "2": {
+          "attributes": [
+            {
+              "accession": "MS:1002357",
+              "name": "PSM-level probability",
+              "value": 0.937
+            },
+            {
+              "accession": "MS:XXXXXXX",
+              "name": "analyte mixture members",
+              "value": "3"
+            }
+          ],
+          "id": "2",
+          "members": {
+            "3": {
+              "attributes": [
+                {
+                  "accession": "MS:XXXXXXX",
+                  "name": "explained intensity fraction",
+                  "value": 0.512
+                }
+              ],
+              "id": "3"
+            }
+          }
+        }
+      },
+      "mzs": [],
+      "peak_annotations": []
+    }
+  ]
+}

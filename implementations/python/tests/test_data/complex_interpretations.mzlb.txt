@@ -1,0 +1,15 @@
+<Spectrum>
+MS:1003061|spectrum name=Test
+MS:1000744|selected ion m/z=880.8902
+<Analyte=1>
+MS:1000888|peptidoform=DSDDVPM[Oxidation]VLVGNKCDLAAR
+<Analyte=2>
+MS:1000888|peptidoform=VLVGNKCDLDSDDVPMVLR
+<Analyte=3>
+MS:1000888|peptidoform=CDLDSDDSDDVPMVLSAR
+<Interpretation=1>
+MS:XXXXXXX|analyte mixture members=1,2
+MS:1002357|PSM-level probability=0.974
+<Interpretation=2>
+MS:XXXXXXX|analyte mixture members=3
+MS:1002357|PSM-level probability=0.937

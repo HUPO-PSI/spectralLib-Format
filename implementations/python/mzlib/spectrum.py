@@ -2,9 +2,11 @@ from __future__ import print_function
 
 import re
 import textwrap
-import json
+
+from typing import Dict,  List
 
 from mzlib.attributes import AttributeManager
+from mzlib.analyte import Analyte, InterpretationCollection, Interpretation
 
 #A class that holds data for each spectrum that is read from the SpectralLibrary class
 
@@ -12,9 +14,12 @@ SPECTRUM_NAME = "MS:1003061|spectrum name"
 
 
 class Spectrum(AttributeManager):
+    peak_list: List
+    analytes: Dict[str, Analyte]
+    interpretations: InterpretationCollection
 
     #### Constructor
-    def __init__(self, attributes=None, peak_list=None, analytes=None):
+    def __init__(self, attributes=None, peak_list=None, analytes=None, interpretations=None):
         """
         __init__ - SpectrumLibrary constructor
 
@@ -26,17 +31,22 @@ class Spectrum(AttributeManager):
         if peak_list is None:
             peak_list = []
         if analytes is None:
-            analytes = []
+            analytes = dict()
+        if interpretations is None:
+            interpretations = InterpretationCollection()
+        else:
+            interpretations = InterpretationCollection(interpretations)
         super(Spectrum, self).__init__(attributes)
         self.peak_list = peak_list
         self.analytes = analytes
+        self.interpretations = interpretations
 
     @property
-    def name(self):
+    def name(self) -> str:
         return self.get_attribute(SPECTRUM_NAME)
 
     @name.setter
-    def name(self, value):
+    def name(self, value: str):
         if self.has_attribute(SPECTRUM_NAME):
             self.replace_attribute(SPECTRUM_NAME, value)
         elif AttributeManager.__len__(self) > 0:
@@ -46,6 +56,26 @@ class Spectrum(AttributeManager):
             AttributeManager._from_iterable(attribs)
         else:
             self.add_attribute(SPECTRUM_NAME, value)
+
+    def add_analyte(self, analyte: Analyte):
+        self.analytes[str(analyte.id)] = analyte
+
+    def get_analyte(self, analyte_id: str) -> Analyte:
+        return self.analytes[str(analyte_id)]
+
+    def remove_analyte(self, analyte_id: str):
+        analyte_id = str(analyte_id)
+        del self.analytes[analyte_id]
+        interpretation: Interpretation
+        for interpretation in self.interpretations.values():
+            if interpretation.has_analyte(analyte_id):
+                interpretation.remove_analyte(analyte_id)
+
+    def add_interpretation(self, interpretation: Interpretation):
+        self.interpretations.add_interpretation(interpretation)
+
+    def get_interpretation(self, interpretation_id: str) -> Interpretation:
+        return self.interpretations.get_interpretation(interpretation_id)
 
     def __eq__(self, other):
         result = super(Spectrum, self).__eq__(other)

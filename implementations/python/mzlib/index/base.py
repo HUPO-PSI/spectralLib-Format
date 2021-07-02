@@ -6,7 +6,7 @@ class IndexBase(object):
     def from_filename(cls, filename, library=None):
         raise NotImplementedError()
 
-    def offset_for(self, record_label):
+    def offset_for(self, record_label) -> int:
         record = self.record_for(record_label)
         return record.offset
 
@@ -27,7 +27,7 @@ class IndexBase(object):
     def commit(self):
         raise NotImplementedError()
 
-    def check_names_unique(self):
+    def check_names_unique(self) -> bool:
         '''Checks that all indexed spectra have unique
         ``spectrum name`` parameters.
 

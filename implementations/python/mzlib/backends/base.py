@@ -1,11 +1,13 @@
 import os
+import io
 
+from typing import Callable, Iterable, Union, List, Type
 from pathlib import Path
 
-from mzlib.index import MemoryIndex, SQLIndex
+from mzlib.index import MemoryIndex, SQLIndex, IndexBase
 from mzlib.spectrum import Spectrum
-from mzlib.analyte import Analyte
-from mzlib.attributes import AttributeManager
+from mzlib.analyte import Analyte, Interpretation, InterpretationMember, ANALYTE_MIXTURE_TERM
+from mzlib.attributes import Attributed, AttributedEntity
 
 
 FORMAT_VERSION_TERM = 'MS:1009002|format version'
@@ -33,7 +35,7 @@ class SubclassRegisteringMetaclass(type):
         return cls._file_extension_to_implementation.get(format_or_extension)
 
 
-class SpectralLibraryBackendBase(object, metaclass=SubclassRegisteringMetaclass):
+class SpectralLibraryBackendBase(AttributedEntity, metaclass=SubclassRegisteringMetaclass):
     """A base class for all spectral library formats.
 
     """
@@ -42,7 +44,7 @@ class SpectralLibraryBackendBase(object, metaclass=SubclassRegisteringMetaclass)
     _file_extension_to_implementation = {}
 
     @classmethod
-    def guess_from_filename(cls, filename):
+    def guess_from_filename(cls, filename) -> bool:
         """Guess if the file is of this type by inspecting the file's name and extension.
 
         Parameters
@@ -60,7 +62,7 @@ class SpectralLibraryBackendBase(object, metaclass=SubclassRegisteringMetaclass)
         return filename.endswith(cls.file_format)
 
     @classmethod
-    def guess_from_header(cls, filename):
+    def guess_from_header(cls, filename) -> bool:
         """Guess if the file is of this type by inspecting the file's header section
 
         Parameters
@@ -76,7 +78,7 @@ class SpectralLibraryBackendBase(object, metaclass=SubclassRegisteringMetaclass)
         return False
 
     @classmethod
-    def guess_implementation(cls, filename, index_type=None, **kwargs):
+    def guess_implementation(cls, filename, index_type=None, **kwargs) -> 'SpectralLibraryBackendBase':
         """Guess the backend implementation to use with this file format.
 
         Parameters
@@ -108,7 +110,7 @@ class SpectralLibraryBackendBase(object, metaclass=SubclassRegisteringMetaclass)
     def __init__(self, filename):
         self.filename = filename
         self.index = MemoryIndex()
-        self.attributes = AttributeManager()
+        super().__init__(None)
 
     @property
     def format_version(self):
@@ -120,7 +122,7 @@ class SpectralLibraryBackendBase(object, metaclass=SubclassRegisteringMetaclass)
             self.add_attribute(FORMAT_VERSION_TERM, value)
             return value
 
-    def read_header(self):
+    def read_header(self) -> bool:
         """Read just the header of the whole library
 
         Returns
@@ -129,77 +131,38 @@ class SpectralLibraryBackendBase(object, metaclass=SubclassRegisteringMetaclass)
         """
         raise NotImplementedError()
 
-    def add_attribute(self, key, value, group_identifier=None):
-        """Add an attribute to the library level attributes store.
-
-        Parameters
-        ----------
-        key : str
-            The name of the attribute to add
-        value : object
-            The value of the attribute to add
-        group_identifier : str, optional
-            The attribute group identifier to use, if any. If not provided,
-            no group is assumed.
-        """
-        return self.attributes.add_attribute(key, value, group_identifier=group_identifier)
-
-    def get_attribute(self, key, group_identifier=None):
-        """Get the value or values associated with a given
-        attribute key from the library level attribute store.
-
-        Parameters
-        ----------
-        key : str
-            The name of the attribute to retrieve
-        group_identifier : str, optional
-            The specific group identifier to return from.
-
-        Returns
-        -------
-        attribute_value: object or list[object]
-            Returns single or multiple values for the requested attribute.
-        """
-        return self.attributes.get_attribute(key, group_identifier=group_identifier)
-
-    def remove_attribute(self, key, group_identifier=None):
-        """Remove the value or values associated with a given
-        attribute key from the library level attribute store.
-
-        This rebuilds the entire store, which may be expensive.
-
-        Parameters
-        ----------
-        key : str
-            The name of the attribute to retrieve
-        group_identifier : str, optional
-            The specific group identifier to return from.
-
-        """
-        return self.attributes.remove_attribute(key, group_identifier=group_identifier)
-
-    def has_attribute(self, key):
-        """Test for the presence of a given attribute in the library
-        level store.
-
-        Parameters
-        ----------
-        key : str
-            The attribute to test for
-
-        Returns
-        -------
-        bool
-        """
-        return self.attributes.has_attribute(key)
-
-    def _new_spectrum(self):
+    def _new_spectrum(self) -> Spectrum:
         return Spectrum()
 
-    def _new_analyte(self, id=None):
+    def _new_interpretation(self, id=None) -> Interpretation:
+        return Interpretation(id)
+
+    def _new_interpretation_member(self, id=None) -> InterpretationMember:
+        return InterpretationMember(id)
+
+    def _new_analyte(self, id=None) -> Analyte:
         return Analyte(id)
 
-    def get_spectrum(self, spectrum_number=None, spectrum_name=None):
+    def _analyte_interpretation_link(self, spectrum: Spectrum, interpretation: Interpretation):
+        if interpretation.has_attribute(ANALYTE_MIXTURE_TERM) and not interpretation.analytes:
+            analyte_ids_term = interpretation.get_attribute(ANALYTE_MIXTURE_TERM)
+            # TODO: Enforce this attribute is a string at the CV level
+            if isinstance(analyte_ids_term, int):
+                analyte_ids = [analyte_ids_term]
+                interpretation.replace_attribute(ANALYTE_MIXTURE_TERM, str(analyte_ids_term))
+            else:
+                analyte_ids = analyte_ids_term.split(',')
+            for analyte_id in analyte_ids:
+                interpretation.add_analyte(spectrum.get_analyte(analyte_id))
+        return interpretation
+
+    def _default_interpretation_to_analytes(self, spectrum: Spectrum):
+        for interpretation in spectrum.interpretations.values():
+            if not interpretation.analytes:
+                for analyte in spectrum.analytes.values():
+                    interpretation.add_analyte(analyte)
+
+    def get_spectrum(self, spectrum_number: int=None, spectrum_name: str=None):
         """Retrieve a single spectrum from the library.
 
         Parameters
@@ -218,7 +181,7 @@ class SpectralLibraryBackendBase(object, metaclass=SubclassRegisteringMetaclass)
     def find_spectra(self, specification, **query_keys):
         raise NotImplementedError()
 
-    def create_index(self):
+    def create_index(self) -> int:
         """Populate the spectrum index.
 
         This method may produce a large amount of file I/O.
@@ -241,7 +204,7 @@ class SpectralLibraryBackendBase(object, metaclass=SubclassRegisteringMetaclass)
     def __len__(self):
         return len(self.index)
 
-    def __getitem__(self, i):
+    def __getitem__(self, i) -> Union[Spectrum, List[Spectrum]]:
         record = self.index[i]
         if isinstance(record, list):
             result = [self.get_spectrum(rec.number) for rec in record]
@@ -250,7 +213,7 @@ class SpectralLibraryBackendBase(object, metaclass=SubclassRegisteringMetaclass)
         return result
 
     @classmethod
-    def has_index_preference(cls, filename):
+    def has_index_preference(cls, filename) -> Type[IndexBase]:
         '''Does this backend prefer a particular index for this file?
 
         The base implementation checks to see if there is a SQL index
@@ -299,7 +262,7 @@ class _PlainTextSpectralLibraryBackendBase(SpectralLibraryBackendBase):
         else:
             self.handle = open(filename_or_stream, 'rt')
 
-    def _buffer_from_stream(self, stream):
+    def _buffer_from_stream(self, stream: io.IOBase) -> List:
         '''Collect data from the readable stream until
         a complete spectrum entry has been observed.
 
@@ -310,7 +273,7 @@ class _PlainTextSpectralLibraryBackendBase(SpectralLibraryBackendBase):
 
         Returns
         -------
-        line_buffer: list[str]
+        line_buffer: List[str]
             A list of lines read from the input stream.
         '''
         raise NotImplementedError()
@@ -330,17 +293,17 @@ class _PlainTextSpectralLibraryBackendBase(SpectralLibraryBackendBase):
                     break
                 yield self._parse(buffer, i)
 
-    def _get_lines_for(self, offset):
+    def _get_lines_for(self, offset: int) -> List[str]:
         with open(self.filename, 'r') as infile:
             infile.seek(offset)
             spectrum_buffer = self._buffer_from_stream(infile)
             #### We will end up here if this is the last spectrum in the file
         return spectrum_buffer
 
-    def _parse(self, buffer, spectrum_index=None):
+    def _parse(self, buffer: Iterable, spectrum_index: int=None):
         raise NotImplementedError()
 
-    def search(self, specification, **query_keys):
+    def search(self, specification, **query_keys) -> List[Spectrum]:
         records = self.index.search(specification, **query_keys)
         if not isinstance(records, list):
             records = [records]
@@ -356,21 +319,35 @@ class SpectralLibraryWriterBase(object, metaclass=SubclassRegisteringMetaclass):
     def __init__(self, filename, **kwargs):
         self.filename = filename
 
+    def _filter_attributes(self, attributes: Attributed, filter_fn: Callable) -> Iterable:
+        if isinstance(attributes, AttributedEntity):
+            attributes = attributes.attributes
+        for attrib in attributes:
+            if filter_fn(attrib):
+                yield attrib
+
+    def _not_analyte_mixture_term(self, attrib):
+        if attrib:
+            key = attrib[0]
+            if key == ANALYTE_MIXTURE_TERM:
+                return False
+        return True
+
     def _coerce_handle(self, filename_or_stream):
         if hasattr(filename_or_stream, 'write'):
             self.handle = filename_or_stream
         else:
             self.handle = open(filename_or_stream, 'wt')
 
-    def write_library(self, library):
+    def write_library(self, library: SpectralLibraryBackendBase):
         self.write_header(library)
         for spectrum in library:
             self.write_spectrum(spectrum)
 
-    def write_spectrum(self, spectrum):
+    def write_spectrum(self, spectrum: Spectrum):
         raise NotImplementedError()
 
-    def __enter__(self):
+    def __enter__(self) -> 'SpectralLibraryWriterBase':
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):

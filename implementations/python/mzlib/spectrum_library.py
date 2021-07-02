@@ -9,9 +9,11 @@ import timeit
 import os
 import pathlib
 
+from typing import Type, List, Union
+
 from mzlib.spectrum_library_index import SpectrumLibraryIndex
 from mzlib.spectrum import Spectrum
-from mzlib.index import MemoryIndex, SQLIndex
+from mzlib.index import MemoryIndex, SQLIndex, IndexBase
 from mzlib.backends import guess_implementation, SpectralLibraryBackendBase, SpectralLibraryWriterBase
 
 
@@ -28,7 +30,7 @@ class SpectrumLibrary:
         provider.
     filename: str or Path
         A location on the local file system where the spectral library is stored
-    format : string
+    format : str
         The name of the format for the current encoding of the library.
     backend: :class:`~.SpectralLibraryBackendBase`
         The implementation used to parse the file
@@ -44,6 +46,12 @@ class SpectrumLibrary:
     find_spectra - Return a list of spectra given query constraints
 
     """
+
+    backend: SpectralLibraryBackendBase
+    filename: str
+    identifier: str
+    format: str
+    index_type: Type[IndexBase]
 
 
     def __init__(self, identifier=None, filename=None, format=None, index_type=None):
@@ -62,7 +70,7 @@ class SpectrumLibrary:
         self._format = format
         self.filename = filename
 
-    def _init_from_filename(self, filename, index_type=None):
+    def _init_from_filename(self, filename: str, index_type: Type[IndexBase]=None):
         if index_type is None:
             index_type = self.index_type
         if self.format is None:
@@ -122,7 +130,7 @@ class SpectrumLibrary:
             return self.backend.attributes
         return None
 
-    def read_header(self):
+    def read_header(self) -> bool:
         """Read just the header of the whole library
 
         Returns
@@ -137,7 +145,7 @@ class SpectrumLibrary:
         self._requires_backend()
         return self.backend.read()
 
-    def write(self, destination, format=None):
+    def write(self, destination, format: str=None):
         """Write the library to disk
         """
         filename = destination
@@ -164,7 +172,7 @@ class SpectrumLibrary:
             print("Library not initialized")
             writer.close()
 
-    def get_spectrum(self, spectrum_number=None, spectrum_name=None):
+    def get_spectrum(self, spectrum_number: int=None, spectrum_name: str=None) -> Spectrum:
         """Retrieve a single spectrum from the library.
 
         Parameters
@@ -181,14 +189,14 @@ class SpectrumLibrary:
         self._requires_backend()
         return self.backend.get_spectrum(spectrum_number, spectrum_name)
 
-    def find_spectra(self, specification, **query_keys):
+    def find_spectra(self, specification, **query_keys) -> List[Spectrum]:
         """
         find_spectra - Return a list of spectra given query constraints
         """
         self._requires_backend()
         return self.backend.find_spectra(specification, **query_keys)
 
-    def __getitem__(self, i):
+    def __getitem__(self, i: int) -> Spectrum:
         self._requires_backend()
         return self.backend[i]
 
