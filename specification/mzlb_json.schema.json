@@ -1,0 +1,146 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "$id": "https://raw.githubusercontent.com/HUPO-PSI/mzSpecLib/master/specification/mzlb_json.schema.json",
+    "title": "HUPO-PSI mzSpecLib spectral library specification",
+    "description": "Describe library, spectrum, and spectrum-component attributes",
+    "required": ["attributes", "format_version", "spectra"],
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+        "attributes": {
+            "type": "array",
+            "description": "A list of controlled vocabulary terms describing the spectral library",
+            "items": {
+                "$ref": "#/definitions/cvparam"
+            }
+        },
+        "spectra": {
+            "type": "array",
+            "description": "A list of spectra contained in the spectral library",
+            "items": {
+                "$ref": "#/definitions/spectrum"
+            }
+        },
+        "format_version": {
+            "type": "string",
+            "description": "The format specification's version name"
+        }
+    },
+    "definitions": {
+        "cvparam": {
+            "type": "object",
+            "description": "A controlled vocabulary term with an optional associated value, which may itself be a cvparam",
+            "required": ["accession", "name"],
+            "additionalProperties": false,
+            "properties": {
+                "accession": {
+                    "type": "string",
+                    "description": "The accession number of the external controlled vocabulary term"
+                },
+                "name": {
+                    "type": "string",
+                    "description": "The human readable name of the controlled vocabulary term"
+                },
+                "value": {
+                    "oneOf": [
+                        {"type": ["string", "number", "boolean", "null"]}
+                    ]
+                },
+                "value_accession": {
+                    "type": "string",
+                    "description": "The accession number of the external controlled vocabulary term describing the value of this cvparam"
+                },
+                "cv_param_group": {
+                    "type": "integer",
+                    "description": "An identifier connecting a group of related parameters"
+                }
+            }
+        },
+        "analyte": {
+            "type": "object",
+            "description": "A molecule that is believed to have generated or contributed to the spectrum",
+            "required": ["attributes", "id"],
+            "additionalProperties": false,
+            "properties": {
+                "attributes": {
+                    "type": "array",
+                    "description": "A list of controlled vocabulary terms describing the analyte",
+                    "items": {
+                        "$ref": "#/definitions/cvparam"
+                    }
+                },
+                "id": {
+                    "type": "integer",
+                    "description": "A identifier number unique within the spectrum entry"
+                }
+            }
+        },
+        "spectrum": {
+            "type": "object",
+            "description": "A mass spectrum entry in the library",
+            "required": [
+                "attributes",
+                "analytes",
+                "mzs",
+                "intensities"
+            ],
+            "additionalProperties": false,
+            "properties": {
+                "attributes": {
+                    "type": "array",
+                    "description": "A list of controlled vocabulary terms describing the spectrum",
+                    "items": {
+                        "$ref": "#/definitions/cvparam"
+                    }
+                },
+                "analytes": {
+                    "type": "object",
+                    "description": "The analytes described by this spectrum",
+                    "patternProperties": {
+                        "[0-9]{1,}": {
+                            "$ref": "#/definitions/analyte"
+                        }
+                    },
+                    "additionalProperties": false
+                },
+                "mzs": {
+                    "type": "array",
+                    "description": "The m/z values of each peak in the spectrum",
+                    "items": {
+                        "type": "number"
+                    }
+                },
+                "intensities": {
+                    "type": "array",
+                    "description": "The intensity values of each peak in the spectrum",
+                    "items": {
+                        "type": "number"
+                    }
+                },
+                "interpretations": {
+                    "type": "array",
+                    "description": "The annotations, if any, of each peak in the spectrum",
+                    "items": {
+                        "type": ["array"],
+                        "items": {
+                             "$ref": "https://raw.githubusercontent.com/HUPO-PSI/mzSpecLib/master/specification/peak-annotation-format/annotation-schema.json"
+                        }
+                    }
+                },
+                "aggregations": {
+                    "type": "array",
+                    "description": "The aggregation statistics, if any, of each peak in the spectrum",
+                    "items": {
+                        "type": [
+                            "array",
+                            "null"
+                        ],
+                        "items": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
